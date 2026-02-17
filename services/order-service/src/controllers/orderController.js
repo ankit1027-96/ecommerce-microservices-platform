@@ -34,7 +34,7 @@ class OrderController {
     }
   }
 
-  async getOrder(req, res) {
+  async getOrders(req, res) {
     try {
       const userId = req.user.userId;
       const options = {
@@ -57,6 +57,29 @@ class OrderController {
       res.status(500).json({
         success: false,
         message: error.message || "Failed to retrieve orders",
+      });
+    }
+  }
+
+  async getOrderById(req, res) {
+    try {
+      const { orderId } = req.params;
+      const userId = req.user.userId;
+
+      const order = await orderService.getOrder(orderId, userId);
+
+      res.json({
+        success: true,
+        message: "Order retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      logger.error("Get order by ID controller error:", error);
+      const statusCode = error.message === "Order not found" ? 404 : 500;
+
+      res.status(statusCode).json({
+        success: false,
+        message: error.message || "Failed to retrieve order",
       });
     }
   }
@@ -122,6 +145,64 @@ class OrderController {
       res.status(statusCode).json({
         success: false,
         message: error.message || "Failed to cancel order",
+      });
+    }
+  }
+
+  async initiateReturn(req, res) {
+    try {
+      const { orderId } = req.params;
+      const userId = req.user.userId;
+      const { returnReason } = req.body;
+
+      if (!returnReason) {
+        return res.status(400).json({
+          success: false,
+          message: "Return reason is required",
+        });
+      }
+
+      const order = await orderService.initiateReturn(
+        orderId,
+        userId,
+        returnReason,
+      );
+      res.json({
+        success: true,
+        message: "Return request initaited successfully",
+        data: order,
+      });
+    } catch (error) {
+      logger.error("Initiate return controller error:", error);
+      const statusCode = error.message.includes("not found")
+        ? 404
+        : error.message.includes("cannot")
+          ? 400
+          : 500;
+
+      res.status(statusCode).json({
+        success: false,
+        message: error.message || "Failed to initiate return",
+      });
+    }
+  }
+
+  async getOrderStats(req, res) {
+    try {
+      const userId = req.user.userId;
+
+      const stats = await orderService.getOrderStats(userId);
+
+      res.json({
+        success: true,
+        message: "Order statistics retrieved successfully",
+        data: stats,
+      });
+    } catch (error) {
+      logger.error("Get order stats controller error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to retrieve order status",
       });
     }
   }
