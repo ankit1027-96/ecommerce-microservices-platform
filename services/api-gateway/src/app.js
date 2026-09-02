@@ -17,7 +17,6 @@ const {
 const { authenticationToken, optionalAuth } = require("./middleware/auth");
 
 const app = express();
-
 // Trust proxy for rate limiting
 app.set("trust proxy", 1);
 
@@ -30,9 +29,13 @@ app.use(compression());
 // CORS configuration
 const corsOptions = {
   origin: process.env.ALLOWED_ORIGINS
-    ? process.env.ALLOWED_ORIGINS.split(",")
-    : ["http://localhost:3000", "http://localhost:5173"],
-  methods: ["GET", "POST", "PUT", "DELETE", "PATCH"],
+    ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
+    : [
+        "http://localhost:3000",
+        "http://localhost:5173",
+        "http://localhost:3006",
+      ],
+  methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   credentials: true,
 };
@@ -48,7 +51,7 @@ app.use(generalLimiter);
 app.get("/health", (req, res) => {
   const serviceStatuses = serviceRegistry.getServiceStatus();
   const allServicesHealthy = Object.values(serviceStatuses).every(
-    (status) => status === true
+    (status) => status === true,
   );
 
   res.status(allServicesHealthy ? 200 : 503).json({
@@ -77,34 +80,37 @@ const createAuthenticatedProxy = (target, requireAuth = true) => {
       target,
       changeOrigin: true,
       selfHandleResponse: false,
-      pathRewrite: (path, req) => req.originalUrl, // keep full URL
-      onProxyReq: (proxyReq, req) => {
-        if (req.user) {
-          proxyReq.setHeader("X-User-Id", req.user.userId);
-          proxyReq.setHeader("X-User-Email", req.user.email);
-          proxyReq.setHeader("X-User-Role", req.user.role || "user");
-        }
-        // Forward session ID for guest users
-        if (req.cookies?.sessionId) {
-          proxyReq.setHeader("X-Session-Id", req.cookies.sessionId);
-        }
-      },
-      onError: (err, req, res) => {
-        logger.error("Proxy error:", err.message);
-        res.status(503).json({
-          success: false,
-          message: "Service temporarily unavailable",
-        });
+      pathRewrite: (path, req) => req.originalUrl,
+      on: {
+        proxyReq: (proxyReq, req) => {
+          if (req.user) {
+            proxyReq.setHeader("X-User-Id", req.user.userId);
+            proxyReq.setHeader("X-User-Email", req.user.email);
+            proxyReq.setHeader("X-User-Role", req.user.role || "user");
+          }
+          if (req.cookies?.sessionId) {
+            proxyReq.setHeader("X-Session-Id", req.cookies.sessionId);
+          }
+        },
+        error: (err, req, res) => {
+          logger.error("Proxy error:", err.message);
+          res.status(503).json({
+            success: false,
+            message: "Service temporarily unavailable",
+          });
+        },
       },
     }),
   ];
 };
 
 // For debugging
-// app.use("/api/auth", (req, res, next) => {
-//   console.log("Incoming to Gateway:", req.method, req.originalUrl);
-//   next();
-// });
+app.use((req, res, next) => {
+  console.log(
+    `[DEBUG] ${req.method} ${req.path} | Origin: ${req.headers.origin}`,
+  );
+  next();
+});
 
 // Route definitions with authentication
 // Auth routes (with strict rate limiting)
@@ -114,16 +120,16 @@ app.use("/api/auth/register", authLimiter);
 app.use("/api/auth", ...createAuthenticatedProxy(services.user.url, false));
 
 // User routes (require authentication)
-app.use("/api/user", ...createAuthenticatedProxy(services.user.url, true));
+app.use("/api/users", ...createAuthenticatedProxy(services.user.url, true));
 
 // Product routes (optional authentication for personalization)
 app.use(
   "/api/products",
-  ...createAuthenticatedProxy(services.product.url, false)
+  ...createAuthenticatedProxy(services.product.url, false),
 );
 app.use(
   "/api/categories",
-  ...createAuthenticatedProxy(services.product.url, false)
+  ...createAuthenticatedProxy(services.product.url, false),
 );
 
 // Cart routes (require authentication)
@@ -136,7 +142,7 @@ app.use("/api/orders", ...createAuthenticatedProxy(services.order.url, true));
 app.use("/api/payments", paymentLimiter);
 app.use(
   "/api/payments",
-  ...createAuthenticatedProxy(services.payment.url, true)
+  ...createAuthenticatedProxy(services.payment.url, true),
 );
 
 // Admin routes (require admin authentication)
