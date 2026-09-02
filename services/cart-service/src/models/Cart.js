@@ -43,7 +43,7 @@ const cartItemSchema = new mongoose.Schema(
       availableQuantity: Number,
     },
   },
-  { _id: false }
+  { _id: false },
 );
 
 const cartSchema = new mongoose.Schema(
@@ -122,7 +122,7 @@ const cartSchema = new mongoose.Schema(
     timestamps: true,
     toJSON: { virtuals: true },
     toObject: { virtuals: true },
-  }
+  },
 );
 
 // Indexes
@@ -168,7 +168,7 @@ cartSchema.methods.calculateTotals = function () {
   // Update item count
   this.metadata.itemCount = this.items.reduce(
     (sum, item) => sum + item.quantity,
-    0
+    0,
   );
 
   return this.totals;
@@ -185,7 +185,7 @@ cartSchema.methods.addItem = function (item) {
   const existingItemIndex = this.items.findIndex(
     (i) =>
       i.productId.toString() === item.productId.toString() &&
-      i.variantId === item.variantId
+      i.variantId === item.variantId,
   );
 
   if (existingItemIndex > -1) {
@@ -209,10 +209,12 @@ cartSchema.methods.addItem = function (item) {
 };
 
 cartSchema.methods.updateItem = function (productId, variantId, quantity) {
+  const normalizedVariantId = variantId || null;
+
   const itemIndex = this.items.findIndex(
     (i) =>
       i.productId.toString() === productId.toString() &&
-      i.variantId === variantId
+      i.variantId === normalizedVariantId,
   );
 
   if (itemIndex === -1) {
@@ -233,12 +235,10 @@ cartSchema.methods.removeItem = function (productId, variantId = null) {
   const itemIndex = this.items.findIndex(
     (i) =>
       i.productId.toString() === productId.toString() &&
-      i.variantId === variantId
+      i.variantId === variantId,
   );
 
-  if (itemIndex === -1) {
-    throw new Error("Item not found in cart");
-  }
+  if (itemIndex === -1) return;
 
   this.items.splice(itemIndex, 1);
   this.lastActivity = new Date();
@@ -317,7 +317,7 @@ cartSchema.statics.mergeGuestCart = async function (guestSessionId, userId) {
     guestCart.sessionId = null;
     const expiryDays = parseInt(process.env.CART_EXPIRY_DAYS) || 30;
     guestCart.expiresAt = new Date(
-      Date.now() + expiryDays * 24 * 60 * 60 * 1000
+      Date.now() + expiryDays * 24 * 60 * 60 * 1000,
     );
     await guestCart.save();
     return guestCart;

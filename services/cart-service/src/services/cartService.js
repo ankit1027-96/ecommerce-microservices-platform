@@ -1,9 +1,9 @@
-const Cart = require('../models/Cart');
-const redis = require('../config/redis');
-const productClient = require('./productClient');
-const calculationService = require('./calculationService');
-const logger = require('../config/logger');
-const { v4: uuidv4 } = require('uuid');
+const Cart = require("../models/Cart");
+const redis = require("../config/redis");
+const productClient = require("./productClient");
+const calculationService = require("./calculationService");
+const logger = require("../config/logger");
+const { v4: uuidv4 } = require("uuid");
 
 class CartService {
   constructor() {
@@ -24,11 +24,11 @@ class CartService {
       const cachedCart = await redis.get(cacheKey);
 
       if (cachedCart) {
-        logger.debug('Cart cache HIT:', cacheKey);
-        return cachedCart;
+        logger.debug("Cart cache HIT:", cacheKey);
+        return Cart.hydrate(cachedCart);
       }
 
-      logger.debug('Cart cache MISS:', cacheKey);
+      logger.debug("Cart cache MISS:", cacheKey);
 
       // Fallback to database
       let cart = await Cart.findActiveCart(userId, sessionId);
@@ -36,7 +36,11 @@ class CartService {
       if (!cart) {
         // Create new cart
         cart = await Cart.createCart(userId, sessionId);
-        logger.info('Created new cart:', { userId, sessionId, cartId: cart._id });
+        logger.info("Created new cart:", {
+          userId,
+          sessionId,
+          cartId: cart._id,
+        });
       }
 
       // Cache the cart
@@ -44,8 +48,8 @@ class CartService {
 
       return cart;
     } catch (error) {
-      logger.error('Get cart error:', error);
-      throw new Error('Failed to retrieve cart');
+      logger.error("Get cart error:", error);
+      throw new Error("Failed to retrieve cart");
     }
   }
 
@@ -56,9 +60,9 @@ class CartService {
       const cacheKey = this.generateCacheKey(userId, sessionId);
 
       await redis.set(cacheKey, cart.toObject(), this.redisTTL);
-      logger.debug('Cart cached:', cacheKey);
+      logger.debug("Cart cached:", cacheKey);
     } catch (error) {
-      logger.error('Cache cart error:', error);
+      logger.error("Cache cart error:", error);
       // Don't throw - caching failure shouldn't break the flow
     }
   }
@@ -67,36 +71,28 @@ class CartService {
     try {
       const cacheKey = this.generateCacheKey(userId, sessionId);
       await redis.del(cacheKey);
-      logger.debug('Cart cache invalidated:', cacheKey);
+      logger.debug("Cart cache invalidated:", cacheKey);
     } catch (error) {
-      logger.error('Invalidate cart cache error:', error);
+      logger.error("Invalidate cart cache error:", error);
     }
   }
 
-  async addItemToCart(userId, sessionId, itemData) {
+  async addItemToCart(userId, sessionId, itemData, retries = 2) {
     try {
-      // Validate product
       const validation = await productClient.validateProduct(
         itemData.productId,
-        itemData.quantity
+        itemData.quantity,
       );
-
-      if (!validation.isValid) {
-        throw new Error(validation.error);
-      }
-
+      if (!validation.isValid) throw new Error(validation.error);
       if (!validation.availability.canFulfill) {
         throw new Error(
-          `Only ${validation.availability.availableQuantity} items available in stock`
+          `Only ${validation.availability.availableQuantity} items available in stock`,
         );
       }
 
       const product = validation.product;
-
-      // Get or create cart
       const cart = await this.getCart(userId, sessionId);
 
-      // Prepare cart item
       const cartItem = {
         productId: product._id,
         variantId: itemData.variantId || null,
@@ -104,164 +100,187 @@ class CartService {
         slug: product.slug,
         price: product.price,
         quantity: itemData.quantity,
-        image: product.images && product.images.length > 0 
-          ? product.images.find(img => img.isPrimary)?.url || product.images[0].url
+        image: product.images?.length
+          ? product.images.find((img) => img.isPrimary)?.url ||
+            product.images[0].url
           : null,
         productSnapshot: {
           brand: product.brand?.name,
           category: product.category?.name,
           inStock: product.inStock,
-          availableQuantity: product.availableQuantity
-        }
+          availableQuantity: product.availableQuantity,
+        },
       };
 
-      // Add item to cart
       cart.addItem(cartItem);
-
-      // Save to database
       await cart.save();
-
-      // Update cache
       await this.cacheCart(cart);
 
-      logger.info('Item added to cart:', {
+      logger.info("Item added to cart:", {
         userId,
         sessionId,
         productId: itemData.productId,
-        quantity: itemData.quantity
+        quantity: itemData.quantity,
       });
-
       return cart;
     } catch (error) {
-      logger.error('Add item to cart error:', error);
+      if (error.name === "VersionError" && retries > 0) {
+        await this.invalidateCart(userId, sessionId);
+        logger.warn(
+          "Cart version conflict on add — cache invalidated, retrying:",
+          { userId, retriesLeft: retries },
+        );
+        return this.addItemToCart(userId, sessionId, itemData, retries - 1);
+      }
+      logger.error("Add item to cart error:", error);
       throw error;
     }
   }
 
-  async updateCartItem(userId, sessionId, productId, variantId, quantity) {
+  async updateCartItem(
+    userId,
+    sessionId,
+    productId,
+    variantId,
+    quantity,
+    retries = 2,
+  ) {
     try {
       const cart = await this.getCart(userId, sessionId);
+      if (cart.isEmpty) throw new Error("Cart is empty");
 
-      if (cart.isEmpty) {
-        throw new Error('Cart is empty');
-      }
-
-      // Validate product availability for new quantity
-      const validation = await productClient.validateProduct(productId, quantity);
-
-      if (!validation.isValid) {
-        throw new Error(validation.error);
-      }
-
+      const validation = await productClient.validateProduct(
+        productId,
+        quantity,
+      );
+      if (!validation.isValid) throw new Error(validation.error);
       if (!validation.availability.canFulfill) {
         throw new Error(
-          `Only ${validation.availability.availableQuantity} items available in stock`
+          `Only ${validation.availability.availableQuantity} items available in stock`,
         );
       }
 
-      // Update item
       cart.updateItem(productId, variantId, quantity);
-
-      // Save and cache
       await cart.save();
       await this.cacheCart(cart);
 
-      logger.info('Cart item updated:', {
+      logger.info("Cart item updated:", {
         userId,
         sessionId,
         productId,
-        quantity
+        quantity,
       });
-
       return cart;
     } catch (error) {
-      logger.error('Update cart item error:', error);
+      if (error.name === "VersionError" && retries > 0) {
+        await this.invalidateCart(userId, sessionId);
+        logger.warn(
+          "Cart version conflict on update — cache invalidated, retrying:",
+          { userId, productId, retriesLeft: retries },
+        );
+        return this.updateCartItem(
+          userId,
+          sessionId,
+          productId,
+          variantId,
+          quantity,
+          retries - 1,
+        );
+      }
+      logger.error("Update cart item error:", error);
       throw error;
     }
   }
 
-  async removeCartItem(userId, sessionId, productId, variantId = null) {
+  async removeCartItem(
+    userId,
+    sessionId,
+    productId,
+    variantId = null,
+    retries = 2,
+  ) {
     try {
       const cart = await this.getCart(userId, sessionId);
-
       if (cart.isEmpty) {
-        throw new Error('Cart is empty');
+        throw new Error("Cart is empty");
       }
-
       cart.removeItem(productId, variantId);
-
       await cart.save();
       await this.cacheCart(cart);
-
-      
-      logger.info('Item removed from cart:', {
-        userId,
-        sessionId,
-        productId
-      });
-
+      logger.info("Item removed from cart:", { userId, sessionId, productId });
       return cart;
     } catch (error) {
-      logger.error('Remove cart item error:', error);
-      throw error;
-    }
-  }
-
-  async clearCart(userId, sessionId) {
-    try {
-      const cart = await this.getCart(userId, sessionId);
-
-      cart.clear();
-
-      await cart.save();
-      await this.cacheCart(cart);
-
-      logger.info('Cart cleared:', { userId, sessionId });
-
-      return cart;
-    } catch (error) {
-      logger.error('Clear cart error:', error);
-      throw error;
-    }
-  }
-
-  async syncCartPrices(userId, sessionId) {
-    try {
-      const cart = await this.getCart(userId, sessionId);
-
-      if (cart.isEmpty) {
-        return cart;
+      if (error.name === "VersionError" && retries > 0) {
+        await this.invalidateCart(userId, sessionId);
+        logger.warn("Cart version conflict — cache invalidated, retrying:", {
+          userId,
+          productId,
+          retriesLeft: retries,
+        });
+        return this.removeCartItem(
+          userId,
+          sessionId,
+          productId,
+          variantId,
+          retries - 1,
+        );
       }
+      logger.error("Remove cart item error:", error);
+      throw error;
+    }
+  }
 
-      // Fetch current product data
-      const productIds = cart.items.map(item => item.productId);
+  async clearCart(userId, sessionId, retries = 2) {
+    try {
+      const cart = await this.getCart(userId, sessionId);
+      cart.clear();
+      await cart.save();
+      await this.cacheCart(cart);
+      logger.info("Cart cleared:", { userId, sessionId });
+      return cart;
+    } catch (error) {
+      if (error.name === "VersionError" && retries > 0) {
+        await this.invalidateCart(userId, sessionId);
+        logger.warn("Cart version conflict — cache invalidated, retrying:", {
+          userId,
+          sessionId,
+          retriesLeft: retries,
+        });
+        return this.clearCart(userId, sessionId, retries - 1);
+      }
+      logger.error("Clear cart error:", error);
+      throw error;
+    }
+  }
+
+  async syncCartPrices(userId, sessionId, retries = 2) {
+    try {
+      const cart = await this.getCart(userId, sessionId);
+      if (cart.isEmpty) return cart;
+
+      const productIds = cart.items.map((item) => item.productId);
       const productResults = await productClient.getProducts(productIds);
-
       let updated = false;
 
       for (let i = 0; i < cart.items.length; i++) {
         const item = cart.items[i];
         const productResult = productResults.find(
-          p => p.productId.toString() === item.productId.toString()
+          (p) => p.productId.toString() === item.productId.toString(),
         );
-
         if (productResult && productResult.data) {
           const product = productResult.data;
-          
-          // Update price if changed
           if (item.price !== product.price) {
             cart.items[i].price = product.price;
             updated = true;
-            logger.info('Price updated for cart item:', {
+            logger.info("Price updated for cart item:", {
               productId: item.productId,
               oldPrice: item.price,
-              newPrice: product.price
+              newPrice: product.price,
             });
           }
-
-          // Update availability
           cart.items[i].productSnapshot.inStock = product.inStock;
-          cart.items[i].productSnapshot.availableQuantity = product.availableQuantity;
+          cart.items[i].productSnapshot.availableQuantity =
+            product.availableQuantity;
         }
       }
 
@@ -270,10 +289,17 @@ class CartService {
         await cart.save();
         await this.cacheCart(cart);
       }
-
       return cart;
     } catch (error) {
-      logger.error('Sync cart prices error:', error);
+      if (error.name === "VersionError" && retries > 0) {
+        await this.invalidateCart(userId, sessionId);
+        logger.warn(
+          "Cart version conflict on sync — cache invalidated, retrying:",
+          { userId, retriesLeft: retries },
+        );
+        return this.syncCartPrices(userId, sessionId, retries - 1);
+      }
+      logger.error("Sync cart prices error:", error);
       throw error;
     }
   }
@@ -290,12 +316,12 @@ class CartService {
         // Cache merged cart
         await this.cacheCart(mergedCart);
 
-        logger.info('Guest cart merged:', { guestSessionId, userId });
+        logger.info("Guest cart merged:", { guestSessionId, userId });
       }
 
       return mergedCart;
     } catch (error) {
-      logger.error('Merge guest cart error:', error);
+      logger.error("Merge guest cart error:", error);
       throw error;
     }
   }

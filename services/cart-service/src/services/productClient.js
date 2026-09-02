@@ -11,7 +11,7 @@ class ProductClient {
     try {
       const response = await axios.get(
         `${this.baseURL}/api/products/${productId}`,
-        { timeout: this.timeout }
+        { timeout: this.timeout },
       );
 
       if (response.data.success && response.data.data) {
@@ -62,12 +62,12 @@ class ProductClient {
       const product = await this.getProduct(productId);
 
       return {
-        isvalid: true,
+        isValid: true,
         product,
         availability: {
           inStock: product.inStock,
-          availableQuantity: product.availableQuantity,
-          canFulfill: product.availableQuantity >= quantity,
+          availableQuantity: product.availableInventory,
+          canFulfill: product.availableInventory >= quantity,
         },
       };
     } catch (error) {

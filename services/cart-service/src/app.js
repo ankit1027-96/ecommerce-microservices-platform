@@ -18,13 +18,19 @@ app.set("trust proxy", 1);
 // Security middleware
 app.use(helmet());
 app.use(compression());
+app.use(express.json({ limit: "10mb" }));
+app.use(express.urlencoded({ extended: true }));
 
 // CORS
 app.use(
   cors({
     origin: process.env.ALLOWED_ORIGINS
       ? process.env.ALLOWED_ORIGINS.split(",")
-      : ["http://localhost:3000", "http://localhost:5173"],
+      : [
+          "http://localhost:3000",
+          "http://localhost:5173",
+          "http://localhost:3006",
+        ],
     methods: ["GET", "POST", "PUT", "DELETE"],
     allowedHeaders: [
       "Content-Type",
@@ -34,7 +40,7 @@ app.use(
       "X-Session-Id",
     ],
     credentials: true, // Important for cookies
-  })
+  }),
 );
 
 // Body parsing
