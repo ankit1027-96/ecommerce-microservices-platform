@@ -3,7 +3,7 @@ const logger = require("../config/logger");
 
 class cartClient {
   constructor() {
-    this.baseURL = process.env.API_GATEWAY_URL || "http:localhost:3000";
+    this.baseURL = process.env.CART_SERVICE_URL|| "http//:localhost:3003";
     this.timeout = 5000;
   }
 
@@ -16,6 +16,7 @@ class cartClient {
       if (sessionId) {
         requestHeaders["X-Session-Id"] = sessionId;
       }
+      requestHeaders["X-Internal-Service"] = "order-service";
 
       const response = await axios.get(`${this.baseURL}/api/cart`, {
         headers: requestHeaders,

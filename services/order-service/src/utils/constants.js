@@ -5,7 +5,7 @@ module.exports = {
     CONFIRMED: "confirmed",
     PROCESSING: "processing",
     SHIPPED: "shipped",
-    OUT_FOR_DELIVERY,
+    OUT_FOR_DELIVERY: "out_for_delivery",
     DELIVERED: "delivered",
     RETURNED: "returned",
     REFUNDED: "refunded",
@@ -20,6 +20,8 @@ module.exports = {
   },
 
   PAYMENT_METHODS: {
+    RAZORPAY: "razorpay",
+
     CARD: "card",
     UPI: "upi",
     NETBANKING: "netbanking",

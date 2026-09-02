@@ -27,18 +27,15 @@ class OrderService {
         sessionId,
         notes,
       } = orderData;
-
-      // Get cart data
+ 
       const cart = await cartClient.getCart(userId, sessionId);
 
       if (!cart || !cart.items || cart.items.length === 0) {
         throw new Error("Cart is empty");
       }
 
-      // Generate order number
       const orderNumber = orderNumberGenerator.generate();
 
-      // Prepare order data
       const orderItems = cart.items.map((item) => ({
         productId: item.productId,
         varientId: item.varientId,
@@ -58,7 +55,7 @@ class OrderService {
         userEmail,
         items: orderItems,
         pricing: {
-          subTotal: cart.totals.subTotal,
+          subtotal: cart.totals.subtotal,
           tax: cart.totals.tax,
           shipping: cart.totals.shipping,
           discount: cart.totals.discount || 0,
@@ -68,7 +65,7 @@ class OrderService {
         billingAddress,
         payment: {
           method: paymentMethod,
-          status: paymentMethod === "cod" ? "pending" : "'pending",
+          status: paymentMethod === "cod" ? "pending" : "pending",
         },
         status: "pending",
         notes: {
@@ -91,15 +88,12 @@ class OrderService {
         throw new Error("Some items are out of stock");
       }
 
-      // Save order
       await order.save();
 
-      // Clear cart
       cartClient
         .clearCart(userId, sessionId)
         .catch((err) => logger.error("Failed to clear cart:", err));
 
-      // Cache the order
       await this.cacheOrder(order);
 
       logger.info("Order created successfully:", {
@@ -142,7 +136,7 @@ class OrderService {
       }
 
       // Cache the order
-      await this.cachedOrder(order);
+      await this.cacheOrder
 
       return order;
     } catch (error) {
@@ -344,7 +338,7 @@ class OrderService {
   async cacheOrder(order) {
     try {
       const cacheKey = this.generateCacheKey(order.userId, order._id);
-      await redis.set(caches);
+      await redis.set(cacheKey, order, this.  cacheTTL);
       logger.debug("Order cached:", cacheKey);
     } catch (error) {
       logger.error("Cache order error:", error);

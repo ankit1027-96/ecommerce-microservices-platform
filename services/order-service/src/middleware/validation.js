@@ -1,6 +1,6 @@
 const Joi = require("joi");
 const logger = require("../config/logger");
-const { PAYMNENT_METHODS } = require("../utils/constants");
+const { PAYMENT_METHODS } = require("../utils/constants");
 
 const validate = (schema, property = "body") => {
   return (req, res, next) => {
@@ -17,7 +17,7 @@ const validate = (schema, property = "body") => {
 
       logger.warn("Validation error:", { errors, data: req[property] });
 
-      return req.status(400).json({
+      return res.status(400).json({
         success: false,
         message: "Validation failed",
         errors,
@@ -30,14 +30,16 @@ const validate = (schema, property = "body") => {
 
 // Address schema
 const addressSchema = Joi.object({
-  fullName: Joi.string().trim().min(2).max(100).required(),
+  firstName: Joi.string().trim().min(2).max(50).required(),
+  lastName: Joi.string().trim().min(2).max(50).required(),
   phone: Joi.string()
     .pattern(/^[0-9]{10}$/)
     .required()
     .messages({
       "string.pattern.base": "Phone number must be 10 digits",
     }),
-  street: Joi.string().trim().min(5).max(100).required(),
+  addressLine1: Joi.string().trim().min(5).max(100).required(),
+  addressLine2: Joi.string().trim().max(100).optional().allow(""),
   city: Joi.string().trim().min(2).max(100).required(),
   state: Joi.string().trim().min(2).max(100).required(),
   zipCode: Joi.string()
@@ -47,7 +49,6 @@ const addressSchema = Joi.object({
       "string.pattern.base": "Zip code must be 6 digits",
     }),
   country: Joi.string().trim().default("India"),
-  addressType: Joi.string().valid("home", "work", "other").default("home"),
 });
 
 // create order validation
@@ -84,12 +85,11 @@ const returnOrderSchema = Joi.object({
 
 // Order ID validation
 const OrderIdSchema = Joi.object({
-    orderId: Joi.string().length(24).hex().required()
-        .messages({
-            'string.length': 'Invalid order ID format',
-            'any.required': 'Order ID is required'
-        })
-})
+  orderId: Joi.string().length(24).hex().required().messages({
+    "string.length": "Invalid order ID format",
+    "any.required": "Order ID is required",
+  }),
+});
 
 // Order query validation
 const orderQuerySchema = Joi.object({

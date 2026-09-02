@@ -13,20 +13,20 @@ class RedisClient {
         host: process.env.REDIS_HOST || "localhost",
         port: process.env.REDIS_PORT || 6379,
         password: process.env.REDIS_PASSWORD || undefined,
-        db: process.env.REDIS_PASSWORD || undefined,
+        db: process.env.REDIS_DB || 2,
         retryDelayOnFailover: 100,
         maxRetriesPerRequest: 3,
         lazyConnect: true,
       });
 
       this.client.on("connect", () => {
-        ((this.isConnected = true),
-          logger.info("Redis successfully connected"));
+        this.isConnected = true;
+        logger.info("Redis connected successfully");
       });
 
       this.client.on("error", (error) => {
-        ((this.isConnected = false),
-          logger.error("Redis connection error:", error));
+        this.isConnected = false;
+        logger.error("Redis connection error:", error);
       });
 
       await this.client.connect();

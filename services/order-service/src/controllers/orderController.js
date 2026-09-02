@@ -1,5 +1,6 @@
 const orderService = require("../services/orderService");
 const logger = require("../config/logger");
+const Order = require("../models/order");
 
 class OrderController {
   async createOrder(req, res) {
@@ -53,6 +54,8 @@ class OrderController {
         data: result,
       });
     } catch (error) {
+
+      
       logger.error("Get orders controller error:", error);
       res.status(500).json({
         success: false,
@@ -259,6 +262,97 @@ class OrderController {
       res.status(statusCode).json({
         success: false,
         message: error.message || "Failed to confirm message",
+      });
+    }
+  }
+
+  async getOrderInternal(req, res) {
+    try {
+      const { orderId } = req.params;
+      const order = await Order.findById(orderId);
+
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+      res.json({
+        success: true,
+        message: "Order retrieved successfully",
+        data: order,
+      });
+    } catch (error) {
+      logger.error("Get order internal controller error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to retrieve order",
+      });
+    }
+  }
+  // Called internally by payment service
+  async confirmPaymentInternal(req, res) {
+    try {
+      const { orderId } = req.params;
+      const { transactionId, paymentDetails } = req.body;
+
+      const order = await Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      await order.confirmPayment(transactionId, paymentDetails || {});
+
+      res.json({
+        success: true,
+        message: "Payment confirmed successfully",
+        data: order,
+      });
+    } catch (error) {
+      logger.error("Confirm payment internal controller error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to confirm payment",
+      });
+    }
+  }
+
+  async markPaymentFailedInternal(req, res) {
+    try {
+      const { orderId } = req.params;
+      const { failureReason } = req.body;
+
+      const order = Order.findById(orderId);
+      if (!order) {
+        return res.status(404).json({
+          success: false,
+          message: "Order not found",
+        });
+      }
+
+      order.payment.status = "failed";
+      order.status = "payment_failed";
+      order.tracking.statusHistory.push({
+        status: "payment_failed",
+        timestamp: failureReason || "Payment failed",
+        updatedBy: "payment_service",
+      });
+
+      await order.save();
+
+      res.json({
+        success: true,
+        message: "Order marked as payment failed",
+        data: order,
+      });
+    } catch (error) {
+      logger.error("Mark payment failed internal controller error:", error);
+      res.status(500).json({
+        success: false,
+        message: error.message || "Failed to mark payment as failed",
       });
     }
   }

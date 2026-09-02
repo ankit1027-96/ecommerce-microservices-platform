@@ -2,9 +2,11 @@ const mongoose = require("mongoose");
 
 const addressSchema = new mongoose.Schema(
   {
-    fullName: { type: String, required: true },
+    firstName: { type: String, required: true },
+    lastName: { type: String, required: true },
     phone: { type: String, required: true },
-    street: { type: String, required: true },
+    addressLine1: { type: String, required: true },
+    addressLine2: { type: String },
     city: { type: String, required: true },
     state: { type: String, required: true },
     zipCode: { type: String, required: true },
@@ -41,7 +43,6 @@ const orderSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      index: true,
     },
     userId: {
       type: mongoose.Schema.Types.ObjectId,
@@ -77,7 +78,7 @@ const orderSchema = new mongoose.Schema(
     payment: {
       method: {
         type: String,
-        enum: ["card", "upi", "netbanking", "wallet", "cod"],
+        enum: ["card", "upi", "netbanking", "wallet", "cod", "razorpay"],
         required: true,
       },
       status: {
@@ -105,7 +106,6 @@ const orderSchema = new mongoose.Schema(
         "refunded",
       ],
       default: "pending",
-      index: true,
     },
     tracking: {
       carrier: String,
@@ -166,9 +166,9 @@ const orderSchema = new mongoose.Schema(
 
 // Indexes
 orderSchema.index({ userId: 1, createdAt: -1 });
-orderSchema.index({ orderNumber: 1 });
+
 orderSchema.index({ status: 1, createdAt: -1 });
-orderSchema.index({ "payment.status": 1 });
+
 orderSchema.index({ createdAt: -1 });
 
 // Virtuals
