@@ -85,7 +85,6 @@ class ProductController {
         });
       }
 
-      // Sanitize search term
       const sanitizedSearch = searchTerm.trim().replace(/[^\w\s-]/g, "");
 
       const results = await productService.searchProducts(sanitizedSearch, {
@@ -127,7 +126,7 @@ class ProductController {
 
       const relatedProducts = await productService.getRelatedProducts(
         id,
-        Math.min(20, Math.max(1, parseInt(limit)))
+        Math.min(20, Math.max(1, parseInt(limit))),
       );
 
       res.json({
@@ -150,7 +149,7 @@ class ProductController {
       const { limit = 10 } = req.query;
 
       const products = await productService.getFeaturedProducts(
-        Math.min(50, Math.max(1, parseInt(limit)))
+        Math.min(50, Math.max(1, parseInt(limit))),
       );
 
       res.json({
@@ -172,7 +171,7 @@ class ProductController {
       const { limit = 10 } = req.query;
 
       const products = await productService.getPopularProducts(
-        Math.min(50, Math.max(1, parseInt(limit)))
+        Math.min(50, Math.max(1, parseInt(limit))),
       );
 
       res.json({
@@ -185,6 +184,76 @@ class ProductController {
       res.status(500).json({
         success: false,
         message: error.message || "Failed to retrieve popular products",
+      });
+    }
+  }
+
+  async reserveStock(req, res) {
+    try {
+      const { id } = req.params;
+      const { quantity } = req.body;
+
+      const result = await productService.reserveStock(id, quantity);
+
+      res.json({
+        success: true,
+        message: "Stock reserved successfully",
+        data: result,
+      });
+    } catch (error) {
+      logger.error("Reserve stock controller error:", error);
+      const statusCode = error.message === "Insufficient stock" ? 400 : 500;
+      res.status(statusCode).json({
+        success: false,
+        message: error.message || "Failed to reserve stock",
+      });
+    }
+  }
+
+  async releaseStock(req, res) {
+    try {
+      const { id } = req.params;
+      const { quantity } = req.body;
+
+      const result = await productService.releaseStock(id, quantity);
+
+      res.json({
+        success: true,
+        message: "Stock released successfully",
+        data: result,
+      });
+    } catch (error) {
+      logger.error("Release stock controller error:", error);
+      const statusCode = error.message === "Product not found" ? 404 : 500;
+      res.status(statusCode).json({
+        success: false,
+        message: error.message || "Failed to release stock",
+      });
+    }
+  }
+
+  async decrementStock(req, res) {
+    try {
+      const { id } = req.params;
+      const { quantity } = req.body;
+
+      const result = await productService.updateStock(
+        id,
+        quantity,
+        "decrement",
+      );
+
+      res.json({
+        success: true,
+        message: "Stock decremented successfully",
+        data: result,
+      });
+    } catch (error) {
+      logger.error("Decrement stock controller error:", error);
+      const statusCode = error.message === "Product not found" ? 404 : 500;
+      res.status(statusCode).json({
+        success: false,
+        message: error.message || "Failed to decrement stock",
       });
     }
   }

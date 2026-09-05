@@ -223,7 +223,7 @@ class ProductService {
         "recommendations",
         cacheKey,
         relatedProducts,
-        7200
+        7200,
       ); // 2 hours
 
       return relatedProducts;
@@ -289,6 +289,19 @@ class ProductService {
     }
   }
 
+  async reserveStock(productId, quantity) {
+    const product = await Product.findById(productId);
+    if (!product) throw new Error("Product not found");
+
+    const available = product.inventory.quantity - product.inventory.reserved;
+    if (available < quantity) throw new Error("Insufficient stock");
+
+    product.inventory.reserved += quantity;
+    await product.save();
+
+    return { productId, reserved: quantity };
+  }
+
   async updateStock(productId, quantity, operation = "set") {
     try {
       const product = await Product.findById(productId);
@@ -301,7 +314,7 @@ class ProductService {
       } else if (operation === "decrement") {
         product.inventory.quantity = Math.max(
           0,
-          product.inventory.quantity - quantity
+          product.inventory.quantity - quantity,
         );
       } else {
         product.inventory.quantity = quantity;
@@ -317,6 +330,19 @@ class ProductService {
       logger.error("Update stock error:", error);
       throw error;
     }
+  }
+
+  async releaseStock(productId, quantity) {
+    const product = await Product.findById(productId);
+    if (!product) throw new Error("Product not found");
+
+    product.inventory.reserved = Math.max(
+      0,
+      product.inventory.reserved - quantity,
+    );
+    await product.save();
+
+    return { productId, released: quantity };
   }
 }
 
