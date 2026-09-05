@@ -77,7 +77,7 @@ class InventoryService {
     }
   }
 
-  async releaseReservations(orderId) {
+  async releaseReservation(orderId) {
     try {
       const reservationKey = this.generateReservationKey(orderId);
       const reservations = redis.get(reservationKey);

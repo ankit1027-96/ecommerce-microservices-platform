@@ -27,7 +27,7 @@ class OrderService {
         sessionId,
         notes,
       } = orderData;
- 
+
       const cart = await cartClient.getCart(userId, sessionId);
 
       if (!cart || !cart.items || cart.items.length === 0) {
@@ -65,7 +65,7 @@ class OrderService {
         billingAddress,
         payment: {
           method: paymentMethod,
-          status: paymentMethod === "cod" ? "pending" : "pending",
+          status:  "pending",
         },
         status: "pending",
         notes: {
@@ -136,7 +136,7 @@ class OrderService {
       }
 
       // Cache the order
-      await this.cacheOrder
+      await this.cacheOrder;
 
       return order;
     } catch (error) {
@@ -338,7 +338,7 @@ class OrderService {
   async cacheOrder(order) {
     try {
       const cacheKey = this.generateCacheKey(order.userId, order._id);
-      await redis.set(cacheKey, order, this.  cacheTTL);
+      await redis.set(cacheKey, order, this.cacheTTL);
       logger.debug("Order cached:", cacheKey);
     } catch (error) {
       logger.error("Cache order error:", error);

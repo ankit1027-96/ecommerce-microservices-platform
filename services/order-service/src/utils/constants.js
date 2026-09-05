@@ -21,7 +21,6 @@ module.exports = {
 
   PAYMENT_METHODS: {
     RAZORPAY: "razorpay",
-
     CARD: "card",
     UPI: "upi",
     NETBANKING: "netbanking",

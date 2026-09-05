@@ -3,11 +3,11 @@ const logger = require("../config/logger");
 
 class ProductClient {
   constructor() {
-    this.baseURL = process.env.PRODUCT_SERVICE_URL || "http:localhost:3002";
+    this.baseURL = process.env.PRODUCT_SERVICE_URL || "http://localhost:3002";
     this.timeout = 5000;
 
     this.internalHeaders = {
-      "x-internal-service": "true",
+      "X-Internal-Service": "order-service",
       "Content-Type": "application/json",
     };
   }

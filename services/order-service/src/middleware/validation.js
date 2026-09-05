@@ -17,7 +17,7 @@ const validate = (schema, property = "body") => {
 
       logger.warn("Validation error:", { errors, data: req[property] });
 
-      return res.status(400).json({
+      return res.status(400).json({   // added `return`
         success: false,
         message: "Validation failed",
         errors,
