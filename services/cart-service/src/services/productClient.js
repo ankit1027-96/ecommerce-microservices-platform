@@ -61,13 +61,17 @@ class ProductClient {
     try {
       const product = await this.getProduct(productId);
 
+      const availableQuantity = product.inventory
+        ? product.inventory.quantity - (product.inventory.reserved || 0)
+        : 0;
+
       return {
         isValid: true,
         product,
         availability: {
-          inStock: product.inStock,
-          availableQuantity: product.availableInventory,
-          canFulfill: product.availableInventory >= quantity,
+          inStock: availableQuantity > 0,
+          availableQuantity,
+          canFulfill: availableQuantity >= quantity,
         },
       };
     } catch (error) {
