@@ -54,7 +54,7 @@ const authController = {
       // Send verification email
       await emailService.sendVerificationEmail(
         user.email,
-        emailVerificationToken
+        emailVerificationToken,
       );
 
       res.status(201).json({
@@ -134,7 +134,7 @@ const authController = {
         message: "Login Successfull",
         data: {
           user: {
-            id: user._id,
+            userId: user._id,
             firstName: user.firstName,
             lastName: user.lastName,
             email: user.email,
@@ -190,14 +190,24 @@ const authController = {
 
       // Replace old refresh token with new one
       user.refreshTokens = user.refreshTokens.filter(
-        (token) => token !== refreshToken
+        (token) => token !== refreshToken,
       );
       user.refreshTokens.push(tokens.refreshToken);
       await user.save();
 
       res.json({
         success: true,
-        data: tokens,
+        data: {
+          ...tokens,
+          user: {
+            userId: user._id,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            email: user.email,
+            phone: user.phone,
+            role: user.role,
+          },
+        },
       });
     } catch (error) {
       console.error("Refresh token error", error);
@@ -230,7 +240,7 @@ const authController = {
       }
 
       user.refreshTokens = user.refreshTokens.filter(
-        (token) => token !== refreshToken
+        (token) => token !== refreshToken,
       );
       await user.save();
 
@@ -318,7 +328,7 @@ const authController = {
     }
   },
 
-  // Reset password when user click the link in email 
+  // Reset password when user click the link in email
   resetPassword: async (req, res) => {
     try {
       const { token, newPassword } = req.body;
@@ -338,7 +348,7 @@ const authController = {
       user.password = newPassword;
       user.passwordResetToken = undefined;
       user.passwordResetExpires = undefined;
-      user.refreshTokens = []; // Invalidate all refresh tokens
+      user.refreshTokens = [];
       await user.save();
 
       res.json({
@@ -358,28 +368,27 @@ const authController = {
   verifyToken: async (req, res) => {
     try {
       // Token is already verified by the auth middleware
-      // req.user contain the decoded user data 
+      // req.user contain the decoded user data
 
       res.json({
         success: true,
-        message: 'Token is valid',
+        message: "Token is valid",
         user: {
-          userId: req.user.userId,
+          userId: req.user._id,
           email: req.user.email,
           firstName: req.user.firstName,
           lastName: req.user.lastName,
-        role: req.user.role || 'user'
-
-        }
-      })
+          role: req.user.role || "user",
+        },
+      });
     } catch (error) {
       res.status(500).json({
         success: false,
         message: "Token verification failed",
-        error: error.message
-      })
+        error: error.message,
+      });
     }
-  }
+  },
 };
 
 module.exports = authController;

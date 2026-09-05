@@ -47,7 +47,7 @@ const userController = {
 
       res.json({
         success: true,
-        message: user.addresses,
+        data: user.addresses,
       });
     } catch (error) {
       console.error("Get addresses error", error);
