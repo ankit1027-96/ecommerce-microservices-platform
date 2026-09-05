@@ -14,7 +14,7 @@ const {
   authLimiter,
   paymentLimiter,
 } = require("./middleware/rateLimiter");
-const { authenticationToken, optionalAuth } = require("./middleware/auth");
+const { authenticateToken, optionalAuth } = require("./middleware/auth");
 
 const app = express();
 // Trust proxy for rate limiting
@@ -75,7 +75,7 @@ app.get("/api/status", (req, res) => {
 // Proxy configuration with authentication
 const createAuthenticatedProxy = (target, requireAuth = true) => {
   return [
-    requireAuth ? authenticationToken : optionalAuth,
+    requireAuth ? authenticateToken : optionalAuth,
     createProxyMiddleware({
       target,
       changeOrigin: true,
@@ -83,9 +83,10 @@ const createAuthenticatedProxy = (target, requireAuth = true) => {
       pathRewrite: (path, req) => req.originalUrl,
       on: {
         proxyReq: (proxyReq, req) => {
-          if (req.user) {
+          if (req.user && req.user.userId) {
             proxyReq.setHeader("X-User-Id", req.user.userId);
-            proxyReq.setHeader("X-User-Email", req.user.email);
+            if (req.user.email)
+              proxyReq.setHeader("X-User-Email", req.user.email);
             proxyReq.setHeader("X-User-Role", req.user.role || "user");
           }
           if (req.cookies?.sessionId) {
@@ -146,7 +147,7 @@ app.use(
 );
 
 // Admin routes (require admin authentication)
-app.use("/api/admin", authenticationToken, (req, res, next) => {
+app.use("/api/admin", authenticateToken, (req, res, next) => {
   if (req.user.role !== "admin") {
     return res.status(403).json({
       success: false,

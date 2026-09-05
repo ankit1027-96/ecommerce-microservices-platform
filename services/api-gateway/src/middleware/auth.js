@@ -2,7 +2,7 @@ const axios = require("axios");
 const logger = require("../config/logger");
 const { services } = require("../config/services");
 
-const authenticationToken = async (req, res, next) => {
+const authenticateToken = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(" ")[1];
@@ -20,7 +20,7 @@ const authenticationToken = async (req, res, next) => {
       {
         headers: { Authorization: `Bearer ${token}` },
         timeout: 5000,
-      }
+      },
     );
 
     if (response.data.success) {
@@ -60,7 +60,7 @@ const optionalAuth = async (req, res, next) => {
         {
           headers: { Authorization: `Bearer ${token}` },
           timeout: 5000,
-        }
+        },
       );
 
       if (response.data.success) {
@@ -76,7 +76,14 @@ const optionalAuth = async (req, res, next) => {
   }
 };
 
-module.exports = {
-  authenticationToken,
-  optionalAuth,
+const requireAdmin = (req, res, next) => {
+  if (req.user.role !== "admin") {
+    return res.status(403).json({
+      success: false,
+      message: "Admin access required",
+    });
+  }
+  next();
 };
+
+module.exports = { authenticateToken, optionalAuth, requireAdmin };
