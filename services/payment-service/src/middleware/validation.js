@@ -3,12 +3,7 @@ const Joi = require("joi");
 const schemas = {
   initiatePayment: Joi.object({
     orderId: Joi.string().required(),
-    orderNumber: Joi.string().required(),
-    amount: Joi.number().positive().required(),
-    currency: Joi.string().uppercase().length(3).default("INR"),
-    paymentMethod: Joi.string()
-      .valid("card", "upi", "netbanking", "wallet", "cod")
-      .required(),
+    gateway: Joi.string().valid("razorpay", "cod").required(),
   }),
   verifyRazorpay: Joi.object({
     razorpayOrderId: Joi.string().required(),

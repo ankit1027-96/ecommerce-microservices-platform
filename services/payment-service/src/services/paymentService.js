@@ -5,7 +5,7 @@ const razorpayService = require("./razorpayService");
 const orderClient = require("./orderClient");
 const {
   PAYMENT_STATUS,
-  PAYMENT_GATEWAYS,
+  PAYMENT_GATEWAY,
   METHOD_GATEWAY_MAP,
   PAYMENT_EXPIRY_MINUTES,
   MAX_RETRY_ATTEMPTS,
@@ -17,17 +17,9 @@ class PaymentService {
   }
 
   async initiatePayment(userId, userEmail, initiateData) {
-    const {
-      orderId,
-      orderNumber,
-      amount,
-      currency,
-      paymentMethod,
-      idempotencyKey,
-    } = initiateData;
+    const { orderId, gateway: requestedGateway, idempotencyKey } = initiateData;
 
     try {
-      // Idempotency check to prevent duplicate payment on retry
       if (idempotencyKey) {
         const existing = await redis.getIdempotencyKey(idempotencyKey);
         if (existing) {
@@ -38,7 +30,15 @@ class PaymentService {
           return existing;
         }
       }
-      // Check for existing non failed payment for this order
+
+      const order = await orderClient.getOrder(orderId);
+      if (!order) throw new Error("Order not found");
+
+      const orderNumber = order.orderNumber;
+      const amount = order.pricing.total;
+      const currency = "INR";
+      const paymentMethod = order.payment.method;
+
       const existingPayment = await Payment.findOne({
         orderId,
         status: {
@@ -58,15 +58,13 @@ class PaymentService {
         return this._buildInitiateResponse(existingPayment);
       }
 
-      // Determine gateway from payment method
       const gateway =
-        METHOD_GATEWAY_MAP[paymentMethod] || PAYMENT_GATEWAYS_RAZORPAY;
+        METHOD_GATEWAY_MAP[paymentMethod] || PAYMENT_GATEWAY.RAZORPAY;
 
-      // Create payment record
       const paymentId = Payment.generatePaymentId();
       const expiresAt =
-        gateway !== PAYMENT_GATEWAYS.COD
-          ? new Date(Date.now()) + PAYMENT_EXPIRY_MINUTES * 60 * 1000
+        gateway !== PAYMENT_GATEWAY.COD
+          ? new Date(Date.now() + PAYMENT_EXPIRY_MINUTES * 60 * 1000)
           : null;
 
       const payment = new Payment({
@@ -76,7 +74,7 @@ class PaymentService {
         userId,
         userEmail,
         amount,
-        currency: currency || "INR",
+        currency,
         method: paymentMethod,
         gateway,
         status: PAYMENT_STATUS.CREATED,
@@ -91,23 +89,21 @@ class PaymentService {
         ],
       });
 
-      // Gateway-specific setup
-      if (gateway === PAYMENT_GATEWAYS_RAZORPAY) {
+      if (gateway === PAYMENT_GATEWAY.RAZORPAY) {
         const rzpOrder = await razorpayService.createOrder(
           amount,
-          currency || "INR",
+          currency,
           paymentId,
           { orderId: orderId.toString(), orderNumber },
         );
         payment.gatewayData.gatewayOrderId = rzpOrder.id;
         payment.status = PAYMENT_STATUS.INITIATED;
-        payment.initiatedAt = new Data();
+        payment.initiatedAt = new Date();
         payment.addStatusHistory(
           PAYMENT_STATUS.INITIATED,
           "Razorpay order created",
         );
-      } else if (gateway === PAYMENT_GATEWAYS.COD) {
-        // COD instantly confir - no gateways needed
+      } else if (gateway === PAYMENT_GATEWAY.COD) {
         payment.status = PAYMENT_STATUS.COMPLETED;
         payment.completedAt = new Date();
         payment.addStatusHistory(
@@ -119,6 +115,7 @@ class PaymentService {
           gateway: "cod",
         });
       }
+
       await payment.save();
 
       const result = this._buildInitiateResponse(payment);
@@ -135,7 +132,7 @@ class PaymentService {
       });
       return result;
     } catch (error) {
-      logger.error("PaymentService.initiated");
+      logger.error("PaymentService.initiatePayment error:", error);
       throw error;
     }
   }
@@ -239,7 +236,7 @@ class PaymentService {
       error_description,
     } = event.payload.payment.entity;
     const payment = await Payment.findByGatewayOrderId(rzpOrderId);
-    if (!payment || payment.status === PAYMENT_STATUS_FAILED) return;
+    if (!payment || payment.status === PAYMENT_STATUS.FAILED) return;
 
     payment.metadata.retryCount = (payment.metadata.retryCount || 0) + 1;
     await payment.markFailed(error_code, error_description);
@@ -284,7 +281,7 @@ class PaymentService {
 
       const refundId = `RFD${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
 
-      if (payment.gateway === PAYMENT_GATEWAYS_RAZORPAY) {
+      if (payment.gateway === PAYMENT_GATEWAY.RAZORPAY) {
         const rzpRefund = await razorpayService.createRefund(
           payment.gatewayData.gatewayPaymentId,
           refundAmount,
@@ -349,7 +346,7 @@ class PaymentService {
       const payment = await Payment.findOne({
         orderId,
         userId,
-        status: { $ne: PAYMENT_STATUS_FAILED },
+        status: { $ne: PAYMENT_STATUS.FAILED },
       })
         .sort({ createdAt: -1 })
         .lean();
@@ -412,7 +409,7 @@ class PaymentService {
       expiresAt: payment.expiresAt,
     };
 
-    if (payment.gateway === PAYMENT_GATEWAYS_RAZORPAY) {
+    if (payment.gateway === PAYMENT_GATEWAY.RAZORPAY) {
       base.razorpayOrderId = payment.gatewayData?.gatewayOrderId;
       base.razorpayKeyId = process.env.RAZORPAY_KEY_ID;
     }

@@ -4,7 +4,7 @@ const logger = require("../config/logger");
 
 const initiatePayment = async (req, res, next) => {
   try {
-    const { userId, email: userEmail } = req.userEmail;
+    const { userId, email: userEmail } = req.user;
     const idempotencyKey = req.headers["x-idempotency-key"];
 
     const result = await paymentService.initiatePayment(userId, userEmail, {
@@ -51,9 +51,9 @@ const razorpayWebhook = async (req, res, next) => {
     const rawBody = req.body;
 
     const isValid = razorPayService.verifyWebhookSignature(rawBody, signature);
-    if (!valid) {
+    if (!isValid) {
       logger.warn("Razorpay webhook: invalid signature");
-      return req
+      return res
         .status(400)
         .json({ success: false, message: "Invalid webhook signature" });
     }
@@ -79,7 +79,7 @@ const initiateRefund = async (req, res, next) => {
   try {
     const payment = await paymentService.initiateRefund(
       req.params.id,
-      req.userId,
+      req.user.userId,
       req.body,
     );
     res.status(200).json({
@@ -132,9 +132,9 @@ const getPaymentByOrder = async (req, res, next) => {
 
 const getPaymentHistory = async (req, res, next) => {
   try {
-    const result = await paymentService.getUserPaymentHistory(req, res, next, {
-      page: parseInt(req.query.page),
-      limit: parseInt(req.query.limit),
+    const result = await paymentService.getUserPaymentHistory(req.user.userId, {
+      page: parseInt(req.query.page) || 1,
+      limit: parseInt(req.query.limit) || 10,
       status: req.query.status,
     });
 
@@ -154,7 +154,7 @@ const healthCheck = async (req, res) => {
   res.status(200).json({
     success: true,
     message: "Payment service is running",
-    timestamp: new Data().toISOString(),
+    timestamp: new Date().toISOString(),
     status: {
       database:
         mongoose.connection.readyState === 1 ? "connected" : "disconnected",
@@ -177,4 +177,4 @@ module.exports = {
   getPaymentByOrder,
   getPaymentHistory,
   healthCheck,
- };
+};

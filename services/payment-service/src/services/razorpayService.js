@@ -16,7 +16,6 @@ class RazorpayService {
         key_id: process.env.RAZORPAY_KEY_ID,
         key_secret: process.env.RAZORPAY_KEY_SECRET,
       });
-
       logger.info("Razorpay gateway initialized");
     }
     return this._instance;
@@ -25,14 +24,14 @@ class RazorpayService {
   async createOrder(amount, currency, receipt, notes = {}) {
     try {
       const razorpay = this._getInstance();
-      const amountInPaise = Math.round(amount * 100); // Razorpay needs amount in paise
+      const amountInPaise = Math.round(amount * 100);
 
       const order = await razorpay.orders.create({
         amount: amountInPaise,
         currency: currency || "INR",
         receipt,
         notes,
-        payment_capture: 1, // Auto-capture
+        payment_capture: 1,
       });
       logger.info("Razorpay order created:", {
         razorpayOrderId: order.id,
@@ -41,7 +40,12 @@ class RazorpayService {
       return order;
     } catch (error) {
       logger.error("Razorpay createOrder error:", error);
-      throw new Error(`Gateway error: ${error.description || error.message}`);
+      const description =
+        error.error?.description ||
+        error.description ||
+        error.message ||
+        "Unknown error";
+      throw new Error(`Gateway error: ${description}`);
     }
   }
   verifySignature(razorpayOrderId, razorpayPaymentId, razorpaySignature) {
@@ -53,10 +57,10 @@ class RazorpayService {
         .digest("hex");
 
       const isValid = expectedSignature === razorpaySignature;
-      logger.info("Razorpay signature verfication error:", error);
+      logger.info("Razorpay signature verification result:", { isValid });
       return isValid;
     } catch (error) {
-      logger.error("Razorpay signature verficaion error:", error);
+      logger.error("Razorpay signature verification error:", error);
       return false;
     }
   }

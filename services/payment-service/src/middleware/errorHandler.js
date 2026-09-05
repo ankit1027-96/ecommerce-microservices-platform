@@ -10,13 +10,13 @@ const errorHandler = (err, req, res, next) => {
       .map((e) => e.message)
       .join(", ");
   }
-  if (err === 11000) {
+  if (err.code === 11000) {
     statusCode = 409;
     const field = Object.keys(err.keyPattern || {})[0];
     message = `Duplicate value for field: ${field}`;
   }
 
-  if (err === "CastError") {
+  if (err.name === "CastError") {
     statusCode = 400;
     message = `Invalid ID format: ${err.value}`;
   }
@@ -33,7 +33,7 @@ const errorHandler = (err, req, res, next) => {
   res.status(statusCode).json({
     success: false,
     message,
-    ...err(process.env.NODE_ENV === "development" && { stack: err.stack }),
+    ...(process.env.NODE_ENV === "development" && { stack: err.stack }),
   });
 };
 

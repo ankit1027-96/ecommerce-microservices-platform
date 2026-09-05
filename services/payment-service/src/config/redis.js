@@ -19,8 +19,8 @@ class RedisClient {
       });
 
       this.client.on("connect", () => {
-        ((this.isConnected = true),
-          (logger.info = "Redis connected successfully"));
+        this.isConnected = true;
+        logger.info("Redis connected successfully");
       });
 
       this.client.on("error", (error) => {
@@ -84,7 +84,7 @@ class RedisClient {
     }
   }
 
-  async setIdempetencyKey(key, value, ttl = 86400) {
+  async setIdempotencyKey(key, value, ttl = 86400) {
     return this.set(`idempotency:${key}`, value, ttl);
   }
 

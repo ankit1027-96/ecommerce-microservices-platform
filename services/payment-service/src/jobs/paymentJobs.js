@@ -1,10 +1,8 @@
-const cron = require("node-cron");
-const Payment = require("../models/payment");
-const redis = require("../config/redis");
-const logger = require("../config/logger");
-const { PAYMENT_STATUS } = require("../utils/constants");
-
-// Expire payments that passed their expiresAt timestamp - runs every 5 minutes
+const cron = require('node-cron');
+const Payment = require('../models/payment');
+const redis = require('../config/redis');
+const logger = require('../config/logger');
+const { PAYMENT_STATUS } = require('../utils/constants');
 
 const expireStalePayments = async () => {
   try {
@@ -15,8 +13,8 @@ const expireStalePayments = async () => {
           PAYMENT_STATUS.INITIATED,
           PAYMENT_STATUS.PROCESSING,
         ],
-        expiresAt: { $lt: new Date() },
       },
+      expiresAt: { $lt: new Date() }, // moved out of `status`, now a top-level sibling field
     });
     if (stalePayments.length === 0) return;
     logger.info(
@@ -38,7 +36,7 @@ const expireStalePayments = async () => {
       await redis.del(`payment:order:${payment.orderId}`);
 
       logger.info("Payment expired:", {
-        paymentId: payment.payment,
+        paymentId: payment.paymentId,
         orderId: payment.orderId,
       });
     }

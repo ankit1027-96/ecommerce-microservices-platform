@@ -1,4 +1,4 @@
-const express = require(express);
+const express = require("express");
 const router = express.Router();
 const {
   initiatePayment,
@@ -9,23 +9,23 @@ const {
   getPaymentByOrder,
   getPaymentHistory,
   healthCheck,
-} = reqiure("../controllers/paymentController.js");
+} = require("../controllers/paymentController.js");
 const { requireAuth } = require("../middleware/auth");
 const {
   schemas,
   validate,
   validateQuery,
 } = require("../middleware/validation");
-// Public
 
-router("/health", healthCheck);
+// Public
+router.get("/health", healthCheck);
 
 // Webhook (rawBody set in app.js)
-router.post("/webhook/razorpay");
+router.post("/webhook/razorpay", razorpayWebhook);
 
 // Authenticated
 router.post(
-  "initaite",
+  "/initiate",
   requireAuth,
   validate(schemas.initiatePayment),
   initiatePayment,
@@ -33,10 +33,10 @@ router.post(
 router.post(
   "/verify/razorpay",
   requireAuth,
-  valdiate(schemas.verifyRazorpay),
+  validate(schemas.verifyRazorpay),
   verifyRazorpayPayment,
 );
-router.get("/", requireAuth, validateQuery(schemas.getPaymentHistory), get);
+router.get("/", requireAuth, validateQuery(schemas.getPaymentHistory), getPaymentHistory);
 router.get("/order/:orderId", requireAuth, getPaymentByOrder);
 router.get("/:id", requireAuth, getPaymentById);
 router.post(

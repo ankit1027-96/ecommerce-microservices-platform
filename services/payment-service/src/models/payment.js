@@ -38,13 +38,16 @@ const refundItemSchema = new mongoose.Schema(
       default: "user",
     },
     initiatedAt: { type: Date, default: Date.now },
-    processedAt: true,
+    processedAt: {
+      type: Date,
+      default: null,
+    },
     failureReason: String,
   },
   { _id: false },
 );
 
-const statusHistorySchema = new mongoose(
+const statusHistorySchema = new mongoose.Schema(
   {
     status: { type: String, required: true },
     timestamp: { type: Date, default: Date.now },
@@ -72,7 +75,7 @@ const paymentSchema = new mongoose.Schema(
     currency: { type: String, default: "INR", uppercase: true },
     method: {
       type: String,
-      enum: ["card", "upi", "netbanking", "wallet", "cod"],
+      enum: ["card", "upi", "netbanking", "wallet", "cod", "razorpay"],
       required: true,
     },
     gateway: {
@@ -165,7 +168,7 @@ paymentSchema.methods.markCompleted = function (
 ) {
   this.gatewayData.gatewayPaymentId = gatewayPaymentId;
   this.gatewayData.gatewaySignature = gatewaySignature;
-  this.gatewayDate.rawResponse = rawResponse;
+  this.gatewayData.rawResponse = rawResponse;
   this.completedAt = new Date();
   this.metadata.webhookVerified = true;
   this.addStatusHistory(

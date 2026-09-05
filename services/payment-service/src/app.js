@@ -7,10 +7,14 @@ const logger = require("./config/logger");
 const paymentRoutes = require("./routes/paymentRoutes");
 const { errorHandler, notFound } = require("./middleware/errorHandler");
 const morgan = require("morgan");
-const payment = require("./models/payment");
 
 const app = express();
 app.set("trust-proxy", 1);
+
+// Health check 
+app.get("/health", (req, res) => {
+  res.status(200).json({ success: true, message: "Payment service healthy" });
+});
 
 // Webhooks new rawbody for signature verification
 app.use("/api/payments/webhook", (req, res, next) => {
@@ -47,10 +51,10 @@ app.use(
 );
 
 const generalLimiter = rateLimit({
-  windowsMs: 15 * 60 * 1000,
+  windowMs: 15 * 60 * 1000,
   max: 100,
+  legacyHeaders: false,
   standardHeaders: true,
-  legacyHeader: false,
   message: {
     success: false,
     error: "Too many requests, please try again later",
@@ -58,13 +62,13 @@ const generalLimiter = rateLimit({
 });
 
 const paymentLimiter = rateLimit({
-  windowsMs: 15 * 60 * 1000,
-  max: 20,
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  legacyHeaders: false,
   standardHeaders: true,
-  legacyHeader: false,
   message: {
     success: false,
-    message: "Too many payment attempts, please try again later.",
+    error: "Too many payment attempts, please try again later.",
   },
 });
 
@@ -74,4 +78,4 @@ app.use("/api/payments", paymentRoutes);
 app.use(notFound);
 app.use(errorHandler);
 
-module.exports = app;  
+module.exports = app;

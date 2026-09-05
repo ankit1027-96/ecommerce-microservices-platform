@@ -10,7 +10,7 @@ class OrderClient {
   _headers() {
     return {
       "Content-Type": "application/json",
-      "X-Internal_Service": "payment_service",
+      "X-Internal-Service": "payment_service",
     };
   }
 
@@ -59,7 +59,7 @@ class OrderClient {
       const response = await axios.post(
         `${this.baseUrl}/api/orders/internal/${orderId}/payment-failed`,
         { failureReason },
-        { headers: this._headers, timeout: this.timeout },
+        { headers: this._headers(), timeout: this.timeout },
       );
       return response.data.data;
     } catch (error) {
@@ -70,4 +70,4 @@ class OrderClient {
     }
   }
 }
-module.exports = OrderClient();
+module.exports = new OrderClient();
