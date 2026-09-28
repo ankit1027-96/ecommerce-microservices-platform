@@ -27,6 +27,7 @@ const refundItemSchema = new mongoose.Schema(
         "other",
       ],
     },
+    notes: String,
     status: {
       type: String,
       enum: ["pending", "processing", "completed", "failed"],
@@ -59,6 +60,11 @@ const statusHistorySchema = new mongoose.Schema(
 
 const paymentSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
     paymentId: {
       type: String,
       required: true,
@@ -182,15 +188,14 @@ paymentSchema.methods.initiateRefund = function (
   amount,
   reason,
   refundId,
-  initiated = "user",
+  initiatedBy = "user",
   notes = "",
 ) {
-  if (!this.canRefund) {
-    throw new Error("Payment is not eligible for refund");
-  }
+  if (!this.canRefund) throw new Error("Payment is not eligible for refund");
   if (amount > this.refundableAmount) {
-    throw new Error(`Refund amount (${amount}) exceeds refundable amount
-        (${this.refundableAmount})`);
+    throw new Error(
+      `Refund amount (${amount}) exceeds refundable amount (${this.refundableAmount})`,
+    );
   }
   this.refunds.push({
     refundId,
@@ -198,16 +203,15 @@ paymentSchema.methods.initiateRefund = function (
     reason,
     initiatedBy,
     notes,
-    status: "Pending",
+    status: "pending",
     initiatedAt: new Date(),
   });
-
-  this.addStatusHistory("refund_pending"`Refund of ${amount} initiated`);
+  this.addStatusHistory("refund_pending", `Refund of ₹${amount} initiated`);
   return this.save();
 };
 
-paymentSchema.methods.completedRefund = function (refundId, gatewayRefundId) {
-  const refund = this.refunds.find((r = r.refundId === refundId));
+paymentSchema.methods.completeRefund = function (refundId, gatewayRefundId) {
+  const refund = this.refunds.find((r) => r.refundId === refundId);
   if (!refund) throw new Error("Refund record not found");
 
   refund.status = "completed";
@@ -237,7 +241,10 @@ paymentSchema.statics.findByGatewayOrderId = function (gatewayOrderId) {
 paymentSchema.statics.generatePaymentStats = async function (userId) {
   const stats = await this.aggregate([
     {
-      $match: { userId: mongoose.Types.ObjectId(userId), status: "completed" },
+      $match: {
+        userId: new mongoose.Types.ObjectId(userId),
+        status: "completed",
+      },
     },
     {
       $group: {

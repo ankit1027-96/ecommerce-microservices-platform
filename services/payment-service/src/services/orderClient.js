@@ -53,6 +53,26 @@ class OrderClient {
     }
   }
 
+  async updateRefundStatus(orderId, refundStatus, refundAmount) {
+    try {
+      logger.info(
+        `OrderClient: updating refund status for order ${orderId} to ${refundStatus}`,
+      );
+      const response = await axios.patch(
+        `${this.baseUrl}/api/orders/internal/${orderId}/refund-status`,
+        { refundStatus, refundAmount },
+        { headers: this._headers(), timeout: this.timeout },
+      );
+      return response.data.data;
+    } catch (error) {
+      logger.error(
+        `OrderClient.updateRefundStatus error for ${orderId}:`,
+        error.message,
+      );
+      throw new Error("Failed to update refund status with Order service");
+    }
+  }
+
   async markPaymentFailed(orderId, failureReason) {
     try {
       logger.info(`OrderClient: marking payment failed for order ${orderId}`);

@@ -189,27 +189,46 @@ class PaymentService {
     }
   }
 
-  async handleRazorPayWebhook(rawBody, signature, event) {
-    try {
-      const handlers = {
-        "payment.captured": this.handleRzpPaymentCaptured.bind(this),
-        "payment.failed": this.handleRzpPaymentFailed.bind(this),
-        "refund.processed": this._handleRzpRefundProcessed.bind(this),
-      };
+  async _handleRzpRefundProcessed(event) {
+    const gatewayRefundId = event.payload.refund.entity.id;
 
-      const handler = handlers[event.event];
-      if (!handler) {
-        logger.info("Unhandled Razorpay webhook event:", event.event);
-        return { handled: false };
-      }
-      await handler(event);
-      return { handled: true };
-    } catch (error) {
-      logger.error("PaymentService.handleRazorpaywebhook error:", error);
-      throw error;
+    const payment = await Payment.findOne({
+      "refunds.gatewayRefundId": gatewayRefundId,
+    });
+    if (!payment) {
+      logger.warn("Refund webhook: no matching payment found", {
+        gatewayRefundId,
+      });
+      return;
+    }
+
+    const refundRecord = payment.refunds.find(
+      (r) => r.gatewayRefundId === gatewayRefundId,
+    );
+    refundRecord.status = "completed";
+    refundRecord.completedAt = new Date();
+    await payment.save();
+
+    await redis.del(`payment:${payment._id}`);
+
+    try {
+      await orderClient.updateRefundStatus(
+        payment.orderId.toString(),
+        "completed",
+        refundRecord.amount,
+      );
+    } catch (err) {
+      // Local refund state is correct even if this call fails — log loudly so it can be reconciled by hand
+      logger.error(
+        "CRITICAL_RECONCILE: refund completed locally but order-service update failed",
+        {
+          orderId: payment.orderId,
+          gatewayRefundId,
+          error: err.message,
+        },
+      );
     }
   }
-
   async _handleRzpPaymentCaptured(event) {
     const { order_id: rzpOrderId, id: rzpPaymentId } =
       event.payload.payment.entity;
@@ -263,56 +282,80 @@ class PaymentService {
   }
 
   async initiateRefund(paymentId, userId, refundData) {
+    const payment = await Payment.findOne({ _id: paymentId, userId });
+    if (!payment) throw new Error("Payment not found");
+    return this._processRefund(payment, refundData, "user");
+  }
+
+  // called internally by order-service on cancellation — no userId scoping
+  async initiateSystemRefund(orderId, refundData) {
+    const payment = await Payment.findOne({ orderId });
+    if (!payment) throw new Error("Payment not found for this order");
+    return this._processRefund(payment, refundData, "system");
+  }
+
+  async _processRefund(payment, refundData, initiatedBy) {
     const { amount, reason, notes } = refundData;
 
-    try {
-      const payment = await Payment.findOne({ _id: paymentId, userId });
-      if (!payment) throw new Error("Payment not found");
-      if (!payment.canRefund)
-        throw new Error("Payment is not eligible for refund");
+    if (!payment.canRefund)
+      throw new Error("Payment is not eligible for refund");
 
-      const refundAmount = amount || payment.refudableAmount;
-      if (refundAmount <= 0) throw new Error("No amount available to refund");
-      if (refundAmount > payment.refudableAmount) {
-        throw new Error(
-          `Refund amount exceeds refundable amount of ₹${payment.refundableAmount}`,
-        );
-      }
-
-      const refundId = `RFD${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
-
-      if (payment.gateway === PAYMENT_GATEWAY.RAZORPAY) {
-        const rzpRefund = await razorpayService.createRefund(
-          payment.gatewayData.gatewayPaymentId,
-          refundAmount,
-          { reason, orderId: payment.orderId.toString() },
-        );
-
-        await payment.initiateRefund(
-          refundAmount,
-          reason,
-          refundId,
-          "user",
-          notes,
-        );
-        const refundRecord = payment.refund.find(
-          (r) => r.refundId === refundId,
-        );
-        if (refundRecord) refundRecord.gatewayRefundId = rzpRefund.id;
-        await payment.save();
-      }
-
-      await redis.del(`payment:${payment._id}`);
-      logger.info("Refund initiated:", {
-        paymentId: paymentId,
-        refundId,
-        amount: refundAmount,
-      });
-      return payment;
-    } catch (error) {
-      logger.error("PaymentService.initiatedRefund error:", error);
-      throw error;
+    const refundAmount = amount || payment.refundableAmount;
+    if (!refundAmount || refundAmount <= 0) {
+      throw new Error("No amount available to refund");
     }
+    if (refundAmount > payment.refundableAmount) {
+      throw new Error(
+        `Refund amount exceeds refundable amount of ₹${payment.refundableAmount}`,
+      );
+    }
+
+    if (payment.gateway !== PAYMENT_GATEWAY.RAZORPAY) {
+      throw new Error(
+        `Refunds are not supported for gateway: ${payment.gateway}`,
+      );
+    }
+
+    const refundId = `RFD${Date.now().toString(36).toUpperCase()}${Math.random().toString(36).substring(2, 6).toUpperCase()}`;
+
+    const rzpRefund = await razorpayService.createRefund(
+      payment.gatewayData.gatewayPaymentId,
+      refundAmount,
+      { reason, orderId: payment.orderId.toString() },
+    );
+
+    try {
+      await payment.initiateRefund(
+        refundAmount,
+        reason,
+        refundId,
+        initiatedBy,
+        notes,
+      );
+      const refundRecord = payment.refunds.find((r) => r.refundId === refundId);
+      if (refundRecord) refundRecord.gatewayRefundId = rzpRefund.id;
+      await payment.save();
+    } catch (saveErr) {
+      // Razorpay refund already succeeded — this is a reconciliation gap, not a retry-safe failure
+      logger.error(
+        "CRITICAL_RECONCILE: refund succeeded at gateway but local save failed",
+        {
+          paymentId: payment._id,
+          gatewayRefundId: rzpRefund.id,
+          error: saveErr.message,
+        },
+      );
+      throw saveErr;
+    }
+
+    await redis.del(`payment:${payment._id}`);
+    logger.info("Refund initiated:", {
+      paymentId: payment._id,
+      refundId,
+      amount: refundAmount,
+      initiatedBy,
+    });
+    return payment;
   }
 
   async getPaymentById(paymentMongoId, userId) {

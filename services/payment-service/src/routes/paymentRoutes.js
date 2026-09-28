@@ -5,12 +5,14 @@ const {
   verifyRazorpayPayment,
   razorpayWebhook,
   initiateRefund,
+  initiateSystemRefund,
   getPaymentById,
   getPaymentByOrder,
   getPaymentHistory,
   healthCheck,
 } = require("../controllers/paymentController.js");
-const { requireAuth } = require("../middleware/auth");
+const { requireAuth, requireInternalService } = require("../middleware/auth");
+
 const {
   schemas,
   validate,
@@ -36,7 +38,12 @@ router.post(
   validate(schemas.verifyRazorpay),
   verifyRazorpayPayment,
 );
-router.get("/", requireAuth, validateQuery(schemas.getPaymentHistory), getPaymentHistory);
+router.get(
+  "/",
+  requireAuth,
+  validateQuery(schemas.getPaymentHistory),
+  getPaymentHistory,
+);
 router.get("/order/:orderId", requireAuth, getPaymentByOrder);
 router.get("/:id", requireAuth, getPaymentById);
 router.post(
@@ -44,6 +51,13 @@ router.post(
   requireAuth,
   validate(schemas.initiateRefund),
   initiateRefund,
+);
+
+// Internal (service-to-service)
+router.post(
+  "/internal/:orderId/refund",
+  requireInternalService,
+  initiateSystemRefund,
 );
 
 module.exports = router;

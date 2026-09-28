@@ -30,7 +30,10 @@ const requireAdmin = (req, res, next) => {
 
 const requireInternalService = (req, res, next) => {
   const internalHeader = req.headers["x-internal-service"];
-  if (!internalHeader) {
+  if (
+    !internalHeader ||
+    internalHeader !== process.env.INTERNAL_SERVICE_SECRET
+  ) {
     return res
       .status(403)
       .json({ success: false, message: "Internal service access only" });

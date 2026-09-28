@@ -98,6 +98,29 @@ const initiateRefund = async (req, res, next) => {
   }
 };
 
+const initiateSystemRefund = async (req, res, next) => {
+  try {
+    const { orderId } = req.params;
+    const payment = await paymentService.initiateSystemRefund(
+      orderId,
+      req.body,
+    );
+    res.status(200).json({
+      success: true,
+      message: "Refund initiated successfully",
+      data: {
+        paymentId: payment.paymentId,
+        status: payment.status,
+        totalRefunded: payment.totalRefunded,
+        refundableAmount: payment.refundableAmount,
+        refunds: payment.refunds,
+      },
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 const getPaymentById = async (req, res, next) => {
   try {
     const payment = await paymentService.getPaymentById(
@@ -173,6 +196,7 @@ module.exports = {
   verifyRazorpayPayment,
   razorpayWebhook,
   initiateRefund,
+  initiateSystemRefund,
   getPaymentById,
   getPaymentByOrder,
   getPaymentHistory,
