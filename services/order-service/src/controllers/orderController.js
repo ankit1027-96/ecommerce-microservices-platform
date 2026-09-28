@@ -40,7 +40,7 @@ class OrderController {
       const userId = req.user.userId;
       const options = {
         status: req.query.status,
-        page: parseInt(req.query.limit) || 1,
+        page: parseInt(req.query.page),
         limit: parseInt(req.query.limit) || 10,
         sortBy: req.query.sortBy || "createdAt",
         sortOrder: req.query.sortOrder || "desc",
@@ -54,8 +54,6 @@ class OrderController {
         data: result,
       });
     } catch (error) {
-
-      
       logger.error("Get orders controller error:", error);
       res.status(500).json({
         success: false,
@@ -190,6 +188,28 @@ class OrderController {
     }
   }
 
+  async updateRefundStatus(req, res) {
+    try {
+      const { orderId } = req.params;
+      const { refundStatus, refundAmount } = req.body;
+
+      const order = await orderService.updateRefundStatus(
+        orderId,
+        refundStatus,
+        refundAmount,
+      );
+      res.json({
+        success: true,
+        message: "Refund status updated",
+        data: order,
+      });
+    } catch (error) {
+      logger.error("Update refund status controller error:", error);
+      const statusCode = error.message.includes("not found") ? 404 : 500;
+      res.status(statusCode).json({ success: false, message: error.message });
+    }
+  }
+
   async getOrderStats(req, res) {
     try {
       const userId = req.user.userId;
@@ -223,7 +243,7 @@ class OrderController {
         tracking: order.tracking.trackingNumber,
         carrier: order.tracking.carrier,
         trackingUrl: order.tracking.trackingUrl,
-        estimated: order.tracking.estimateDelivery,
+        estimated: order.tracking.estimatedDelivery,
         actualDelivery: order.tracking.actualDelivery,
         statusHistory: order.tracking.statusHistory,
       };
@@ -325,7 +345,7 @@ class OrderController {
       const { orderId } = req.params;
       const { failureReason } = req.body;
 
-      const order = Order.findById(orderId);
+      const order = await Order.findById(orderId);
       if (!order) {
         return res.status(404).json({
           success: false,
@@ -337,7 +357,8 @@ class OrderController {
       order.status = "payment_failed";
       order.tracking.statusHistory.push({
         status: "payment_failed",
-        timestamp: failureReason || "Payment failed",
+        timestamp: new Date(), 
+        description: failureReason || "Payment failed", 
         updatedBy: "payment_service",
       });
 

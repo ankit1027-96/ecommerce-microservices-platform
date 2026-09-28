@@ -1,6 +1,6 @@
 const requireInternalService = (req, res, next) => {
   const service = req.headers["x-internal-service"];
-  const allowedServices = ["payment-service", "payment_service"]; // accept either casing/style you use elsewhere
+  const allowedServices = ["order-service", "order_service"];
   if (!service || !allowedServices.includes(service)) {
     return res.status(403).json({
       success: false,

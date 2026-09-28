@@ -4,6 +4,7 @@ const cartClient = require("./cartClient");
 const inventoryService = require("./inventoryService");
 const orderNumberGenerator = require("../utils/orderNumberGenerator");
 const logger = require("../config/logger");
+const paymentClient = require("./paymentClient");
 
 class OrderService {
   constructor() {
@@ -65,7 +66,7 @@ class OrderService {
         billingAddress,
         payment: {
           method: paymentMethod,
-          status:  "pending",
+          status: "pending",
         },
         status: "pending",
         notes: {
@@ -112,39 +113,31 @@ class OrderService {
 
   async getOrder(orderId, userId = null) {
     try {
-      // Check cache
       const cacheKey = this.generateCacheKey(userId, orderId);
       const cachedOrder = await redis.get(cacheKey);
 
       if (cachedOrder) {
+        if (userId && cachedOrder.userId?.toString() !== userId.toString()) {
+          throw new Error("Order not found");
+        }
         logger.debug("Order cache HIT:", cacheKey);
         return cachedOrder;
       }
 
       logger.debug("Order cache MISS:", cacheKey);
-
-      // Query Database
       const query = { _id: orderId };
-      if (userId) {
-        query.userId = userId;
-      }
+      if (userId) query.userId = userId;
 
       const order = await Order.findOne(query);
+      if (!order) throw new Error("Order not found");
 
-      if (!order) {
-        throw new Error("Order not found");
-      }
-
-      // Cache the order
-      await this.cacheOrder;
-
+      await this.cacheOrder(order);
       return order;
     } catch (error) {
       logger.error("Get order error:", error);
       throw error;
     }
   }
-
   async getUserOrders(userId, options = {}) {
     try {
       const {
@@ -231,12 +224,15 @@ class OrderService {
       const { isValidTransition } = require("../utils/statusTransitions");
       if (!isValidTransition(order.status, newStatus)) {
         throw new Error(
-          `Cannot transition from ${order.staus} to ${newStatus}`,
+          `Cannot transition from ${order.status} to ${newStatus}`,
         );
       }
 
-      await order.updateStatus(newStatus, updatedBy, description);
-
+      await order.updateStatus(
+        newStatus,
+        updatedBy,
+        `Status changed to ${newStatus}`,
+      );
       // invalidate cache
       await this.invalidateOrderCache(order._id, order.userId);
 
@@ -254,25 +250,30 @@ class OrderService {
     }
   }
 
+  async updateRefundStatus(orderId, refundStatus, refundAmount) {
+    const order = await Order.findById(orderId);
+    if (!order) throw new Error("Order not found");
+
+    order.cancellation.refundStatus = refundStatus;
+    if (refundAmount != null) order.cancellation.refundAmount = refundAmount;
+    await order.save();
+
+    await this.invalidateOrderCache(order._id, order.userId);
+    logger.info("Order refund status updated:", { orderId, refundStatus });
+    return order;
+  }
+
   async cancelOrder(orderId, userId, reason, cancelledBy = "user") {
     try {
       const order = await Order.findOne({ _id: orderId, userId });
-
-      if (!order) {
-        throw new Error("Order not found");
-      }
-
-      if (!order.canCancel) {
+      if (!order) throw new Error("Order not found");
+      if (!order.canCancel)
         throw new Error("Order cannot be cancelled at this stage");
-      }
 
-      // Check cancellation window
       const hoursSinceOrder =
         (Date.now() - order.createdAt.getTime()) / (1000 * 60 * 60);
-      const cancellationWindow = parseInt(
-        process.env.ORDER_CANCELLATION_WINDOW_HOURS,
-      );
-
+      const cancellationWindow =
+        parseInt(process.env.ORDER_CANCELLATION_WINDOW_HOURS) || 24;
       if (hoursSinceOrder > cancellationWindow && order.status !== "pending") {
         throw new Error(
           `Orders can only be cancelled within ${cancellationWindow} hours`,
@@ -281,19 +282,26 @@ class OrderService {
 
       await order.cancelOrder(reason, cancelledBy);
 
-      // Release inventory reservation
-      await inventoryService.releaseReservations(orderId);
+      await inventoryService.releaseReservation(orderId);
 
-      // Invalidate cache
+      if (order.payment.status === "completed") {
+        try {
+          const refund = await paymentClient.refundPayment(
+            order._id.toString(),
+            order.pricing.total,
+            reason,
+          );
+          order.cancellation.refundStatus = "pending";
+          order.cancellation.refundAmount = order.pricing.total;
+        } catch (refundErr) {
+          logger.error("Refund initiation failed:", refundErr);
+          order.cancellation.refundStatus = "failed";
+        }
+        await order.save();
+      }
+
       await this.invalidateOrderCache(order._id, order.userId);
-
-      logger.info("Order cancelled:", {
-        orderId,
-        userId,
-        reason,
-        cancelledBy,
-      });
-
+      logger.info("Order cancelled:", { orderId, userId, reason, cancelledBy });
       return order;
     } catch (error) {
       logger.error("Cancel order error:", error);
@@ -304,20 +312,13 @@ class OrderService {
   async initiateReturn(orderId, userId, returnReason) {
     try {
       const order = await Order.findOne({ _id: orderId, userId });
+      if (!order) throw new Error("Order not found");
+      if (!order.canReturn) throw new Error("Order cannot be returned");
 
-      if (!order) {
-        throw new Error("Order not found");
-      }
+      await order.initiateReturn(returnReason);
 
-      if (!order.canReturn) {
-        throw new Error("Order cannot be returned");
-      }
-
-      // Invalidate cache
       await this.invalidateOrderCache(order._id, order.userId);
-
-      logger.info("Return initiated", orderId, userId, returnReason);
-
+      logger.info("Return initiated:", { orderId, userId, returnReason });
       return order;
     } catch (error) {
       logger.error("Initiate return error:", error);

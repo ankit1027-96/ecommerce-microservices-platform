@@ -80,7 +80,9 @@ class InventoryService {
   async releaseReservation(orderId) {
     try {
       const reservationKey = this.generateReservationKey(orderId);
-      const reservations = redis.get(reservationKey);
+      
+     
+      const reservations = await redis.get(reservationKey); 
 
       if (!reservations) {
         logger.warn("No inventory reservation to release:", { orderId });
@@ -90,11 +92,12 @@ class InventoryService {
       await this.releaseReservations(reservations);
       await redis.del(reservationKey);
 
-      logger.info("Inventory reservation released:", error);
-      return false;
+      logger.info("Inventory reservation released successfully for order:", { orderId });
+      
+      return true; 
     } catch (error) {
       logger.error("Release inventory error:", error);
-      return false;
+      throw error; // Throw the error so the cancelOrder service can handle it
     }
   }
 

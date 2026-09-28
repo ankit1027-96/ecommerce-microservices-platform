@@ -31,6 +31,12 @@ router.post(
   orderController.markPaymentFailedInternal,
 );
 
+router.patch(
+  "/internal/:orderId/refund-status",
+  requireInternalService,
+  orderController.updateRefundStatus,
+);
+
 // All routes below require user authentication
 router.use(requireAuth);
 
@@ -44,7 +50,7 @@ router.post(
   "/:orderId/cancel",
   validateOrderId,
   validateCancelOrder,
-  orderService.cancelOrder,
+  orderController.cancelOrder,
 );
 router.post(
   "/:orderId/return",
